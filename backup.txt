@@ -1,0 +1,204 @@
+#include <stdio.h>
+#include "pico/stdlib.h"
+#include "hardware/i2c.h"
+#include "hardware/adc.h"
+#include "ssd1306.h"
+#include "pico/cyw43_arch.h"
+#include "lwip/pbuf.h"
+#include "lwip/tcp.h"
+#include "lwip/netif.h"
+
+#define DISPLAY_WIDTH 128
+#define DISPLAY_HEIGTH 64
+#define SCREEN_ADDRESS 0x3C
+#define I2C_SDA 14
+#define I2C_SCL 15
+#define ADC_Y 26
+#define ADC_X 27
+#define SSID "OP 02"
+#define PASS "onepiece"
+#define ADC_MAX 4095
+
+ssd1306_t display;
+
+typedef struct {
+    char * arg;
+}data;
+
+void loc_joystick(uint x, uint y){
+    ssd1306_clear(&display);
+    ssd1306_draw_pixel(&display, x, y);
+    ssd1306_show(&display);
+}
+
+void display_txt(char *txt){
+    ssd1306_clear(&display);
+    ssd1306_draw_string(&display, 30, 30, 1, txt);
+    ssd1306_show(&display);
+    sleep_ms(1000);
+}
+
+char html[1024];
+char thing_req[256];
+
+static err_t thingspeak_connected(void *arg, struct tcp_pcb *tpcb, err_t err) {
+    if (err != ERR_OK) {
+        printf("Erro na conexão com ThingSpeak: %d\n", err);
+        tcp_abort(tpcb);
+        return ERR_ABRT;
+    }
+
+    // Enviar a requisição
+    tcp_write(tpcb, thing_req, strlen(thing_req), TCP_WRITE_FLAG_COPY);
+    tcp_output(tpcb);
+
+    // Fechar conexão depois de enviar
+    tcp_close(tpcb);
+    return ERR_OK;
+}
+
+
+void create_http_response(const char *direction) {
+    snprintf(html, sizeof(html),"GET /update?api_key=B29KRC6XD1D1JGJ3&field1=1 HTTP/1.1\r\n"
+    "Host: api.thingspeak.com\r\n"
+    "Connection: close\r\n\r\n");
+    printf("Requisição HTTP: %s\n", html);
+}
+
+void enviar_para_thingspeak(const char *direcao) {
+    struct tcp_pcb *client = tcp_new();
+    if (!client) {
+        printf("Erro ao criar PCB cliente\n");
+        return;
+    }
+
+    ip_addr_t ip_thingspeak;
+    if (!ip4addr_aton("184.106.153.149", &ip_thingspeak)) {
+        printf("Erro ao converter IP do ThingSpeak\n");
+        tcp_abort(client);
+        return;
+    }
+
+    snprintf(thing_req, sizeof(thing_req),
+        "GET /update?api_key=B29KRC6XD1D1JGJ3&field1=1 HTTP/1.1\r\n"
+        "Host: api.thingspeak.com\r\n"
+        "Connection: close\r\n\r\n");
+
+    // Vincula qualquer dado necessário (nesse caso NULL)
+    tcp_arg(client, NULL);
+
+    // Conecta e define o callback de sucesso
+    err_t err = tcp_connect(client, &ip_thingspeak, 80, thingspeak_connected);
+    if (err != ERR_OK) {
+        printf("Erro ao conectar com ThingSpeak: %d\n", err);
+        tcp_abort(client);
+        return;
+    }
+
+    printf("Requisição HTTP: \n%s\n", thing_req);
+
+    sleep_ms(15000);
+}
+
+
+
+
+void setup(){
+    stdio_init_all();
+
+    i2c_init(i2c1, 400*1000);
+    gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
+    gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);
+    gpio_pull_up(I2C_SDA);
+    gpio_pull_up(I2C_SCL);
+
+    adc_init();
+    adc_gpio_init(ADC_Y);
+    adc_gpio_init(ADC_X);
+
+    sleep_ms(5000);
+    
+    if(cyw43_arch_init()){
+        printf("Falha ao inicializar o Wi-Fi\n");
+        return;
+    }
+
+    if (!ssd1306_init(&display, DISPLAY_WIDTH, DISPLAY_HEIGTH, SCREEN_ADDRESS, i2c1)) { 
+        printf("Falha ao inicializar o display SSD1306\n");
+        return;
+    }
+
+    display_txt("Iniciando o display");
+
+
+    
+    cyw43_arch_enable_sta_mode();
+    
+    if(cyw43_arch_wifi_connect_timeout_ms(SSID, PASS, CYW43_AUTH_WPA2_AES_PSK, 20000)){
+        display_txt("Conectando ao WI-FI");
+        printf("Falha ao conectar ao WI-FI\n");
+        return;
+    }
+
+    if(netif_default){
+        printf("IP do dispositivo: %s\n", ipaddr_ntoa(&netif_default->ip_addr));
+    }
+
+
+}
+
+
+char *bussola(uint x, uint y){
+    char *result;
+    if(x < 1500){
+        result = "OESTE";
+        printf("OESTE\n");
+    }
+    if(x > 3000){
+        result = "LESTE";
+        printf("LESTE\n");
+    }
+    if(y < 1500){
+        result = "SUL";
+        printf("SUL\n");
+    }
+    if(y > 3000){
+        result = "NORTE";
+        printf("NORTE\n");
+    }
+
+    return result;
+
+}
+
+int main()
+{
+    data *direction = (data *)malloc(sizeof(data));
+
+    setup();
+
+
+    while (true) {
+        cyw43_arch_poll();  // Necessário para manter o Wi-Fi ativo
+
+        adc_select_input(0);
+        uint adc_y = adc_read(); 
+        adc_select_input(1);   
+        uint adc_x = adc_read();
+
+
+        direction->arg = bussola(adc_x, adc_y);
+
+        create_http_response(direction->arg);
+        enviar_para_thingspeak(direction->arg);
+
+        adc_y /= 63.984375;
+        adc_x /= 31.9921875;
+
+        adc_y = DISPLAY_HEIGTH - adc_y;
+        
+        loc_joystick(adc_x, adc_y);
+
+        sleep_ms(69);
+    }
+}
