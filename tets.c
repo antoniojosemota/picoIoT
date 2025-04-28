@@ -18,13 +18,12 @@
 #define I2C_SCL 15
 #define ADC_Y 26
 #define ADC_X 27
-#define SSID "ENZOBOOK 4142"
-#define PASS "ENZOMELO10"
+#define SSID "OP"
+#define PASS "onepiece"
 #define ADC_MAX 4095
-#define HOST "api.thingspeak.com"
+#define HOST "serverjs-production-2bd6.up.railway.app"
 #define PORT 443  // HTTPS
-#define URL_REQUEST "/update?api_key=B29KRC6XD1D1JGJ3&field1=0"
-#define API_KEY "B29KRC6XD1D1JGJ3"
+#define URL_REQUEST "/dados?direction=NORTE&buttonState=1&sensor=2"
 
 ssd1306_t display;
 
@@ -125,7 +124,7 @@ int main()
 
     setup();
 
-    snprintf(newvalue, sizeof(newvalue), "/update?api_key=B29KRC6XD1D1JGJ3&field1=%d", randnum);
+    snprintf(newvalue, sizeof(newvalue), "/dados?direction=NORTE&buttonState=1&sensor=%d", randnum);
     printf("%s\n", newvalue);
 
 
@@ -202,3 +201,4 @@ int main()
     }
     return 0;
 }
+
