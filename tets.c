@@ -18,8 +18,8 @@
 #define I2C_SCL 15
 #define ADC_Y 26
 #define ADC_X 27
-#define SSID "OP"
-#define PASS "onepiece"
+#define SSID "Familia Brandao "
+#define PASS "994706949"
 #define ADC_MAX 4095
 #define HOST "serverjs-production-2bd6.up.railway.app"
 #define PORT 443  // HTTPS
@@ -91,6 +91,29 @@ void setup(){
 
 }
 
+void http_request(char *newvalue){
+    EXAMPLE_HTTP_REQUEST_T req1 = {0};
+    req1.hostname = HOST;
+    req1.url = newvalue;
+    req1.headers_fn = http_client_header_print_fn;
+    req1.recv_fn = http_client_receive_print_fn;
+    int result = http_client_request_sync(cyw43_arch_async_context(), &req1);
+    result += http_client_request_sync(cyw43_arch_async_context(), &req1);
+    printf("result: %d\n", result);
+
+    while(!req1.complete){
+        async_context_poll(cyw43_arch_async_context());
+        async_context_wait_for_work_ms(cyw43_arch_async_context(), 1000);
+    }
+
+    req1.tls_config = altcp_tls_create_config_client(NULL, 0);
+    result += http_client_request_sync(cyw43_arch_async_context(), &req1);
+    altcp_tls_free_config(req1.tls_config);
+
+    memset(&req1, 0, sizeof req1);
+
+}
+
 
 char *bussola(uint x, uint y){
     char *result;
@@ -128,72 +151,20 @@ int main()
     printf("%s\n", newvalue);
 
 
-    EXAMPLE_HTTP_REQUEST_T req1 = {0};
-    req1.hostname = HOST;
-    req1.url = newvalue;
-    req1.headers_fn = http_client_header_print_fn;
-    req1.recv_fn = http_client_receive_print_fn;
-    int result = http_client_request_sync(cyw43_arch_async_context(), &req1);
-    result += http_client_request_sync(cyw43_arch_async_context(), &req1);
-    printf("result: %d\n", result);
-    
-    EXAMPLE_HTTP_REQUEST_T req2 = req1;
-    result += http_client_request_async(cyw43_arch_async_context(), &req1);
-    result += http_client_request_async(cyw43_arch_async_context(), &req2);
-    printf("result: %d\n", result);
-
-    while(!req1.complete && !req2.complete){
-        async_context_poll(cyw43_arch_async_context());
-        async_context_wait_for_work_ms(cyw43_arch_async_context(), 1000);
-    }
-
-    req1.tls_config = altcp_tls_create_config_client(NULL, 0);
-    result += http_client_request_sync(cyw43_arch_async_context(), &req1);
-    result += http_client_request_sync(cyw43_arch_async_context(), &req1);
-    altcp_tls_free_config(req1.tls_config);
-
-    memset(&req1, 0, sizeof req1);
-    memset(&req2, 0, sizeof req2);
-
-    printf("result: %d\n", result);
+    http_request(newvalue);
     
     sleep_ms(60000);    
     while (true) {
 
         randnum += rand()%100; 
         
-        snprintf(newvalue, sizeof(newvalue), "/update?api_key=B29KRC6XD1D1JGJ3&field1=%d", randnum);
+        snprintf(newvalue, sizeof(newvalue), "/dados?direction=NORTE&buttonState=1&sensor=%d", randnum);
 
         printf("%s\n", newvalue);
         
         cyw43_arch_poll();  // Necessário para manter o Wi-Fi ativo
 
-        req1.hostname = HOST;
-        req1.url = newvalue;
-        req1.headers_fn = http_client_header_print_fn;
-        req1.recv_fn = http_client_receive_print_fn;
-        result += http_client_request_async(cyw43_arch_async_context(), &req1);
-        result += http_client_request_async(cyw43_arch_async_context(), &req2);
-        printf("result: %d\n", result);
-
-        req2 = req1;
-        int result = http_client_request_sync(cyw43_arch_async_context(), &req1);
-        result += http_client_request_sync(cyw43_arch_async_context(), &req1);
-        printf("result: %d\n", result);
-    
-
-        while(!req1.complete && !req2.complete){
-            async_context_poll(cyw43_arch_async_context());
-            async_context_wait_for_work_ms(cyw43_arch_async_context(), 1000);
-        }
-
-        req1.tls_config = altcp_tls_create_config_client(NULL, 0);
-        result += http_client_request_sync(cyw43_arch_async_context(), &req1);
-        result += http_client_request_sync(cyw43_arch_async_context(), &req1);
-        altcp_tls_free_config(req1.tls_config);
-
-        memset(&req1, 0, sizeof req1);
-        memset(&req2, 0, sizeof req2);
+        http_request(newvalue);
 
         sleep_ms(60000);
 
@@ -201,4 +172,3 @@ int main()
     }
     return 0;
 }
-
