@@ -18,18 +18,17 @@
 #define I2C_SCL 15
 #define ADC_Y 26
 #define ADC_X 27
+#define ADC_MIC 28
+#define BTN 5
 #define SSID "Familia Brandao "
 #define PASS "994706949"
 #define ADC_MAX 4095
 #define HOST "serverjs-production-2bd6.up.railway.app"
 #define PORT 443  // HTTPS
-#define URL_REQUEST "/dados?direction=NORTE&buttonState=1&sensor=2"
-
 ssd1306_t display;
 
-typedef struct {
-    char * arg;
-}data;
+char newvalue[256];
+char *direction;
 
 void loc_joystick(uint x, uint y){
     ssd1306_clear(&display);
@@ -44,9 +43,6 @@ void display_txt(char *txt){
     sleep_ms(1000);
 }
 
-char html[1024];
-char thing_req[256];
-
 void setup(){
     stdio_init_all();
 
@@ -59,6 +55,11 @@ void setup(){
     adc_init();
     adc_gpio_init(ADC_Y);
     adc_gpio_init(ADC_X);
+    adc_gpio_init(ADC_MIC);
+
+    gpio_init(BTN);
+    gpio_set_dir(BTN, GPIO_IN);
+    gpio_pull_up(BTN);
 
     sleep_ms(5000);
     
@@ -91,7 +92,11 @@ void setup(){
 
 }
 
-void http_request(char *newvalue){
+void http_request(uint16_t buttonState, uint16_t sensor, char *direction){
+
+    snprintf(newvalue, sizeof(newvalue), "/update?direction=%s&buttonState=%d&sensor=%d", direction, buttonState, sensor);
+    printf("%s\n", newvalue);
+
     EXAMPLE_HTTP_REQUEST_T req1 = {0};
     req1.hostname = HOST;
     req1.url = newvalue;
@@ -115,58 +120,82 @@ void http_request(char *newvalue){
 }
 
 
-char *bussola(uint x, uint y){
+char *bussola(uint x, uint y) {
     char *result;
-    if(x < 1500){
+
+    if (x < 1500 && y < 1500) {
+        result = "SUDOESTE";
+        printf("SUDOESTE\n");
+    } else if (x > 3000 && y < 1500) {
+        result = "SUDESTE";
+        printf("SUDESTE\n");
+    } else if (x < 1500 && y > 3000) {
+        result = "NOROESTE";
+        printf("NOROESTE\n");
+    } else if (x > 3000 && y > 3000) {
+        result = "NORDESTE";
+        printf("NORDESTE\n");
+    } else if (x < 1500) {
         result = "OESTE";
         printf("OESTE\n");
-    }
-    if(x > 3000){
+    } else if (x > 3000) {
         result = "LESTE";
         printf("LESTE\n");
-    }
-    if(y < 1500){
+    } else if (y < 1500) {
         result = "SUL";
         printf("SUL\n");
-    }
-    if(y > 3000){
+    } else if (y > 3000) {
         result = "NORTE";
         printf("NORTE\n");
     }
+    else {
+        result = "CENTRO";
+        printf("CENTRO\n");
+    }
 
     return result;
-
 }
-char newvalue[500];
+
 int main()
 {
-    srand(1);
-    int randnum = rand()%100;
-    
-    data *direction = (data *)malloc(sizeof(data));
-
     setup();
 
-    snprintf(newvalue, sizeof(newvalue), "/dados?direction=NORTE&buttonState=1&sensor=%d", randnum);
-    printf("%s\n", newvalue);
+    adc_select_input(0);
+    uint16_t adc_y = adc_read();
+    adc_select_input(1);
+    uint16_t adc_x = adc_read();
+    adc_select_input(2);
+    uint16_t mic = adc_read();
+
+    int button = gpio_get(BTN);
+    if (button == 0) {
+        button = 1;
+    } else {
+        button = 0;
+    }
 
 
-    http_request(newvalue);
+    direction = bussola(adc_x, adc_y);
+
+    http_request(button, mic, direction);
     
-    sleep_ms(60000);    
+    sleep_ms(1000);    
     while (true) {
-
-        randnum += rand()%100; 
-        
-        snprintf(newvalue, sizeof(newvalue), "/dados?direction=NORTE&buttonState=1&sensor=%d", randnum);
-
-        printf("%s\n", newvalue);
-        
         cyw43_arch_poll();  // Necessário para manter o Wi-Fi ativo
+        
+        adc_select_input(0);
+        adc_y = adc_read();
+        adc_select_input(1);
+        adc_x = adc_read();
+        adc_select_input(2);
+        mic = adc_read();
 
-        http_request(newvalue);
+        button = gpio_get(BTN);
 
-        sleep_ms(60000);
+        direction = bussola(adc_x, adc_y);
+        http_request(button, mic, direction);
+
+        sleep_ms(1000);
 
         tight_loop_contents();
     }
