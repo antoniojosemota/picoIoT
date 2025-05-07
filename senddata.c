@@ -20,8 +20,8 @@
 #define ADC_X 27
 #define ADC_MIC 28
 #define BTN 5
-#define SSID "Familia Brandao "
-#define PASS "994706949"
+#define SSID "SSID_WIFI"
+#define PASS "PASSWORD"
 #define ADC_MAX 4095
 #define HOST "serverjs-production-2bd6.up.railway.app"
 #define PORT 443  // HTTPS
